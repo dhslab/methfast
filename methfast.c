@@ -177,14 +177,21 @@ MethRanges *parse_meth_bed(const char *filepath, int frac_col, int cov_col, int 
         start = atoi(fields[1]);
         end = atoi(fields[2]);
 
-        if (meth_col > 0 && unmeth_col > 0) {
+        if (meth_col > 0 && meth_col <= field_count && unmeth_col > 0 && unmeth_col <= field_count) {
             methylated = atoi(fields[meth_col - 1]);
             unmethylated = atoi(fields[unmeth_col - 1]);
             coverage = methylated + unmethylated;
             fraction = coverage > 0 ? (float)methylated / coverage : 0.0;
-        } else {
+        } else if (meth_col > 0 && meth_col <= field_count && cov_col > 0 && cov_col <= field_count) {
+            methylated = atoi(fields[meth_col - 1]);
+            coverage = atoi(fields[cov_col - 1]);
+            fraction = coverage > 0 ? (float)methylated / coverage : 0.0;
+        } else if (cov_col > 0 && cov_col <= field_count && frac_col > 0 && frac_col <= field_count) {
             fraction = atof(fields[frac_col - 1]);
             coverage = atoi(fields[cov_col - 1]);
+        } else {
+            fprintf(stderr, "Error: invalid column indices\n");
+            exit(EXIT_FAILURE);
         }
 
         add_interval(ranges, chrom, start, end, fraction, coverage);
