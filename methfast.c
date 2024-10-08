@@ -16,14 +16,28 @@ typedef struct {
     int capacity;
 } MethRanges;
 
+// Define a struct to hold the result arrays and sums
 typedef struct {
-    float mean_fraction;
-    int total_coverage;
-    int total_meth_counts;
-    int total_unmeth_counts;
-    int num_cpgs;
+    float *meth_coverage;         // Array of methylated coverages
+    float *unmeth_coverage;       // Array of unmethylated coverages
+    int *total_coverage;          // Array of total coverages
+    float *fraction_methylation;  // Array of methylation fractions
+    int num_positions;            // Total number of positions (size of arrays)
 
-} MethInfo;
+    // Sums of each coverage type
+    float sum_meth_coverage;
+    float sum_unmeth_coverage;
+    int sum_total_coverage;
+} MethStats;
+
+// Function to free MethStats struct
+void free_meth_stats(MethStats *stats) {
+    free(stats->meth_coverage);
+    free(stats->unmeth_coverage);
+    free(stats->total_coverage);
+    free(stats->fraction_methylation);
+    free(stats);
+}
 
 // Initialize MethRanges structure
 MethRanges *init_meth_ranges() {
@@ -61,15 +75,27 @@ void index_meth_ranges(MethRanges *ranges) {
     cr_index(ranges->cr);
 }
 
-// Calculate weighted methylation fraction for a given target interval
-float compute_weighted_fraction(MethRanges *ranges, const char *chrom, int start, int end) {
+
+// collect_meth_stats function
+MethStats *collect_meth_stats(MethRanges *ranges, const char *chrom, int start, int end) {
     int64_t *overlap_indices = NULL;
     int64_t m_overlap = 0;
     int64_t num_overlaps = cr_overlap(ranges->cr, chrom, start, end, &overlap_indices, &m_overlap);
 
-    float meth_coverage = 0.0;
-    int total_coverage = 0;
+    // Allocate MethStats struct and arrays for each metric
+    MethStats *stats = (MethStats *)malloc(sizeof(MethStats));
+    stats->meth_coverage = (float *)malloc(num_overlaps * sizeof(float));
+    stats->unmeth_coverage = (float *)malloc(num_overlaps * sizeof(float));
+    stats->total_coverage = (int *)malloc(num_overlaps * sizeof(int));
+    stats->fraction_methylation = (float *)malloc(num_overlaps * sizeof(float));
+    stats->num_positions = num_overlaps;
 
+    // Initialize sums to zero
+    stats->sum_meth_coverage = 0.0;
+    stats->sum_unmeth_coverage = 0.0;
+    stats->sum_total_coverage = 0;
+
+    // Populate the arrays in the MethStats struct and calculate sums
     for (int64_t i = 0; i < num_overlaps; i++) {
         int idx = overlap_indices[i];
         int meth_start = cr_start(ranges->cr, idx);
@@ -80,15 +106,28 @@ float compute_weighted_fraction(MethRanges *ranges, const char *chrom, int start
 
         float fraction = ranges->meth_intervals[idx].fraction;
         int coverage = ranges->meth_intervals[idx].coverage;
+        
+        // Compute meth and unmeth coverages
+        float meth_coverage = fraction * coverage;
+        float unmeth_coverage = (1.0f - fraction) * coverage;
 
-        meth_coverage += fraction * coverage;
-        total_coverage += coverage;
+        // Store values in the arrays
+        stats->meth_coverage[i] = meth_coverage;
+        stats->unmeth_coverage[i] = unmeth_coverage;
+        stats->total_coverage[i] = coverage;
+        stats->fraction_methylation[i] = fraction;
+
+        // Update sums
+        stats->sum_meth_coverage += meth_coverage;
+        stats->sum_unmeth_coverage += unmeth_coverage;
+        stats->sum_total_coverage += coverage;
     }
 
     free(overlap_indices);
 
-    return total_coverage > 0 ? meth_coverage / total_coverage : 0;
+    return stats;
 }
+
 
 // Check if file is gzipped by extension
 int is_gzipped(const char *filepath) {
@@ -170,8 +209,13 @@ void process_targets(MethRanges *ranges, const char *target_filepath) {
     int start, end;
 
     while (fscanf(file, "%s\t%d\t%d\n", chrom, &start, &end) == 3) {
-        float weighted_fraction = compute_weighted_fraction(ranges, chrom, start, end);
-        printf("%s\t%d\t%d\t%.4f\n", chrom, start, end, weighted_fraction);
+        MethStats *stats = collect_meth_stats(ranges, chrom, start, end);
+
+        // calculate weighted fraction
+        float weighted_fraction = stats->sum_total_coverage > 0 ? stats->sum_meth_coverage / stats->sum_total_coverage : 0.0;
+
+        // print interval, weighted fraction, and number of positions
+        printf("%s\t%d\t%d\t%d\t%.4f\n", chrom, start, end, stats->num_positions, weighted_fraction);
     }
 
     fclose(file);
