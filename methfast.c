@@ -4,6 +4,8 @@
 #include <zlib.h>
 #include "cgranges.h"
 
+#define MAX_LINE_LENGTH 1024
+
 typedef struct {
     float fraction;
     int coverage;
@@ -212,10 +214,27 @@ void process_targets(MethRanges *ranges, const char *target_filepath) {
         exit(EXIT_FAILURE);
     }
 
+    char line[MAX_LINE_LENGTH];
     char chrom[100];
     int start, end;
 
-    while (fscanf(file, "%s\t%d\t%d\n", chrom, &start, &end) == 3) {
+    while (fgets(line, sizeof(line), file)) {
+        // Split the line into tokens using tab as the delimiter
+        char *token = strtok(line, "\t");
+        if (!token) continue;
+
+        // Get chrom, start, and end from the tokens
+        strncpy(chrom, token, sizeof(chrom) - 1);
+        chrom[sizeof(chrom) - 1] = '\0'; // Ensure null termination
+
+        token = strtok(NULL, "\t");
+        if (!token) continue;
+        start = atoi(token);
+
+        token = strtok(NULL, "\t");
+        if (!token) continue;
+        end = atoi(token);
+
         MethStats *stats = collect_meth_stats(ranges, chrom, start, end);
 
         // calculate weighted fraction
