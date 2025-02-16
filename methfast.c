@@ -4,6 +4,8 @@
 #include <zlib.h>
 #include "cgranges.h"
 
+#define MAX_LINE_LENGTH 1024
+
 typedef struct {
     float fraction;
     int coverage;
@@ -205,47 +207,94 @@ MethRanges *parse_meth_bed(const char *filepath, int frac_col, int cov_col, int 
 }
 
 // Process target BED entries and compute weighted methylation fraction for each
-void process_targets(MethRanges *ranges, const char *target_filepath) {
+void process_targets(MethRanges *ranges, const char *target_filepath, FILE *outfp) {
     FILE *file = fopen(target_filepath, "r");
     if (!file) {
         fprintf(stderr, "Error opening file: %s\n", target_filepath);
         exit(EXIT_FAILURE);
     }
 
+    char line[MAX_LINE_LENGTH];
     char chrom[100];
     int start, end;
 
-    while (fscanf(file, "%s\t%d\t%d\n", chrom, &start, &end) == 3) {
+    while (fgets(line, sizeof(line), file)) {
+        // Split the line into tokens using tab as the delimiter
+        char *token = strtok(line, "\t");
+        if (!token) continue;
+
+        // Get chrom, start, and end from the tokens
+        strncpy(chrom, token, sizeof(chrom) - 1);
+        chrom[sizeof(chrom) - 1] = '\0'; // Ensure null termination
+
+        token = strtok(NULL, "\t");
+        if (!token) continue;
+        start = atoi(token);
+
+        token = strtok(NULL, "\t");
+        if (!token) continue;
+        end = atoi(token);
+
         MethStats *stats = collect_meth_stats(ranges, chrom, start, end);
 
         // calculate weighted fraction
-        float weighted_fraction = stats->sum_total_coverage > 0 ? stats->sum_meth_coverage / stats->sum_total_coverage : 0.0;
+        float weighted_fraction = stats->sum_total_coverage > 0
+            ? stats->sum_meth_coverage / stats->sum_total_coverage
+            : 0.0;
 
-        // print interval, weighted fraction, and number of positions
-        printf("%s\t%d\t%d\t%d\t%.4f\n", chrom, start, end, stats->num_positions, weighted_fraction);
+        // Print interval, weighted fraction, and number of positions to outfp
+        fprintf(outfp, "%s\t%d\t%d\t%d\t%.4f\n",
+                chrom, start, end, stats->num_positions, weighted_fraction);
+
+        free_meth_stats(stats);
     }
 
     fclose(file);
 }
 
+
 // Main function
 int main(int argc, char *argv[]) {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <methylation_bed(.gz)> <target_bed> [-f <frac_col>] [-c <cov_col>] [-m <meth_col>] [-u <unmeth_col>]\n", argv[0]);
+        fprintf(stderr,
+            "Usage: %s <methylation_bed(.gz)> <target_bed> "
+            "[-f <frac_col>] [-c <cov_col>] [-m <meth_col>] [-u <unmeth_col>] "
+            "[-o <output_file>]\n",
+            argv[0]);
         return EXIT_FAILURE;
     }
 
     int frac_col = 4, cov_col = 5, meth_col = 0, unmeth_col = 0;
-    for (int i = 3; i < argc; i++) {
-        if (strcmp(argv[i], "-f") == 0 && i + 1 < argc) frac_col = atoi(argv[++i]);
-        else if (strcmp(argv[i], "-c") == 0 && i + 1 < argc) cov_col = atoi(argv[++i]);
-        else if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) meth_col = atoi(argv[++i]);
-        else if (strcmp(argv[i], "-u") == 0 && i + 1 < argc) unmeth_col = atoi(argv[++i]);
+    FILE *outfp = stdout;  // Default to stdout
+    int i;
+
+    for (i = 3; i < argc; i++) {
+        if (strcmp(argv[i], "-f") == 0 && i + 1 < argc) {
+            frac_col = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
+            cov_col = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
+            meth_col = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-u") == 0 && i + 1 < argc) {
+            unmeth_col = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+            outfp = fopen(argv[++i], "w");
+            if (!outfp) {
+                fprintf(stderr, "Error: Unable to open output file.\n");
+                return EXIT_FAILURE;
+            }
+        }
     }
 
     MethRanges *ranges = parse_meth_bed(argv[1], frac_col, cov_col, meth_col, unmeth_col);
-    process_targets(ranges, argv[2]);
+    process_targets(ranges, argv[2], outfp);
 
     free_meth_ranges(ranges);
+
+    // Close outfp if it's not stdout
+    if (outfp && outfp != stdout) {
+        fclose(outfp);
+    }
+
     return EXIT_SUCCESS;
 }
