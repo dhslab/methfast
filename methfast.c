@@ -243,8 +243,8 @@ void process_targets(MethRanges *ranges, const char *target_filepath, FILE *outf
             : 0.0;
 
         // Print interval, weighted fraction, and number of positions to outfp
-        fprintf(outfp, "%s\t%d\t%d\t%d\t%.4f\n",
-                chrom, start, end, stats->num_positions, weighted_fraction);
+        fprintf(outfp, "%s\t%d\t%d\t%d\t%d\t%.4f\n",
+                chrom, start, end, stats->num_positions, stats->sum_total_coverage, weighted_fraction);
 
         free_meth_stats(stats);
     }
