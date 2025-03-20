@@ -130,11 +130,29 @@ MethStats *collect_meth_stats(MethRanges *ranges, const char *chrom, int start, 
     return stats;
 }
 
-
-// Check if file is gzipped by extension
+// Check if a file is gzipped or bzipped
 int is_gzipped(const char *filepath) {
-    size_t len = strlen(filepath);
-    return (len > 3 && strcmp(filepath + len - 3, ".gz") == 0);
+    FILE *fp = fopen(filepath, "rb");
+    if (!fp) {
+        perror("fopen");
+        return 0;
+    }
+
+    // Read the first three bytes from the header
+    unsigned char header[3];
+    size_t n = fread(header, 1, sizeof(header), fp);
+    fclose(fp);
+
+    // If we can't read enough bytes, it's not a valid gzipped file
+    if (n < sizeof(header))
+        return 0;
+
+    // Check for gzip magic numbers: 0x1F, 0x8B and the deflate method (0x08)
+    if (header[0] != 0x1F || header[1] != 0x8B || header[2] != 0x08)
+        return 0;
+
+    // File is gzipped (or BGZipped, as BGZF is a subtype of gzip)
+    return 1;
 }
 
 MethRanges *parse_meth_bed(const char *filepath, int frac_col, int cov_col, int meth_col, int unmeth_col) {
