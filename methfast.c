@@ -68,7 +68,8 @@ void add_interval(MethRanges *ranges, const char *chrom, int start, int end, flo
     ranges->meth_intervals[ranges->num_intervals].fraction = fraction;
     ranges->meth_intervals[ranges->num_intervals].coverage = coverage;
 
-    cr_add(ranges->cr, chrom, start+1, end, ranges->num_intervals);
+    // This previously added 1 to the start to make it 1-based, but it seems cgranges expected 0-based coordinates.
+    cr_add(ranges->cr, chrom, start, end, ranges->num_intervals);
     ranges->num_intervals++;
 }
 
