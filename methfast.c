@@ -201,7 +201,7 @@ MethRanges *parse_meth_bed(const char *filepath, int frac_col, int cov_col, int 
         end = atoi(fields[2]);
 
         // Check if the current interval overlaps with the previous one
-        if (prev_start != -1 && strcmp(chrom, fields[0]) == 0 && start <= prev_end) {
+        if (prev_start != -1 && strcmp(chrom, fields[0]) == 0 && start < prev_end) {
             // the input is not sorted, print message and exit
             fprintf(stderr, "Error: Methylation BED file is not sorted. Exiting...\n");
             free_meth_ranges(ranges);
