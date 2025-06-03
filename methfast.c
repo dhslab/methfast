@@ -160,9 +160,11 @@ MethRanges *parse_meth_bed(const char *filepath, int frac_col, int cov_col, int 
     MethRanges *ranges = init_meth_ranges();
 
     char chrom[100], line[1024];
-    int start, end;
+    int start, end, prev_start, prev_end, linenum = 0;
     float fraction;
     int coverage, methylated, unmethylated;
+
+    prev_start = prev_end = -1; // Initialize previous start and end to invalid values
 
     FILE *plain_file = NULL;
     gzFile gz_file = NULL;
@@ -198,6 +200,16 @@ MethRanges *parse_meth_bed(const char *filepath, int frac_col, int cov_col, int 
         start = atoi(fields[1]);
         end = atoi(fields[2]);
 
+        // Check if the current interval overlaps with the previous one
+        if (prev_start != -1 && strcmp(chrom, fields[0]) == 0 && start <= prev_end) {
+            // the input is not sorted, print message and exit
+            fprintf(stderr, "Error: Methylation BED file is not sorted. Exiting...\n");
+            free_meth_ranges(ranges);
+            if (is_gz) gzclose(gz_file);
+            else fclose(plain_file);
+            exit(EXIT_FAILURE);
+        }
+
         if (meth_col > 0 && meth_col <= field_count && unmeth_col > 0 && unmeth_col <= field_count) {
             methylated = atoi(fields[meth_col - 1]);
             unmethylated = atoi(fields[unmeth_col - 1]);
@@ -216,6 +228,9 @@ MethRanges *parse_meth_bed(const char *filepath, int frac_col, int cov_col, int 
         }
 
         add_interval(ranges, chrom, start, end, fraction, coverage);
+
+        prev_start = start;
+        prev_end = end;
     }
 
     if (is_gz) gzclose(gz_file);
