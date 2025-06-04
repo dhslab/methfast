@@ -159,12 +159,14 @@ int is_gzipped(const char *filepath) {
 MethRanges *parse_meth_bed(const char *filepath, int frac_col, int cov_col, int meth_col, int unmeth_col) {
     MethRanges *ranges = init_meth_ranges();
 
-    char chrom[100], line[1024];
+    char chrom[100], prev_chrom[100], line[1024];
     int start, end, prev_start, prev_end, linenum = 0;
     float fraction;
     int coverage, methylated, unmethylated;
 
     prev_start = prev_end = -1; // Initialize previous start and end to invalid values
+    // initialize prev_chrom to an empty string
+    prev_chrom[0] = '\0';
 
     FILE *plain_file = NULL;
     gzFile gz_file = NULL;
@@ -187,11 +189,13 @@ MethRanges *parse_meth_bed(const char *filepath, int frac_col, int cov_col, int 
     while ((is_gz ? gzgets(gz_file, line, sizeof(line)) : fgets(line, sizeof(line), plain_file)) != NULL) {
         char *fields[20];
         int field_count = 0;
-        char *token = strtok(line, "\t\n");
+        char *token = strtok(line, " \t\n");
         while (token && field_count < 20) {
             fields[field_count++] = token;
-            token = strtok(NULL, "\t\n");
+            token = strtok(NULL, " \t\n");
         }
+
+        linenum++;
 
         if (field_count < 4) continue;  // Skip if there aren't enough columns
 
@@ -201,9 +205,11 @@ MethRanges *parse_meth_bed(const char *filepath, int frac_col, int cov_col, int 
         end = atoi(fields[2]);
 
         // Check if the current interval overlaps with the previous one
-        if (prev_start != -1 && strcmp(chrom, fields[0]) == 0 && start < prev_end) {
+        if (prev_start != -1 && strcmp(chrom, prev_chrom) == 0 && start < prev_end) {
             // the input is not sorted, print message and exit
             fprintf(stderr, "Error: Methylation BED file is not sorted. Exiting...\n");
+            // print the line
+            fprintf(stderr, "Line %d: %s %d %d, then %s %d %d\n", linenum,prev_chrom,prev_start,prev_end,chrom,start,end);
             free_meth_ranges(ranges);
             if (is_gz) gzclose(gz_file);
             else fclose(plain_file);
@@ -231,6 +237,7 @@ MethRanges *parse_meth_bed(const char *filepath, int frac_col, int cov_col, int 
 
         prev_start = start;
         prev_end = end;
+        strncpy(prev_chrom, chrom, sizeof(prev_chrom) - 1);
     }
 
     if (is_gz) gzclose(gz_file);
